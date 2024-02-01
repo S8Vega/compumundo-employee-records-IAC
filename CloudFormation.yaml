@@ -1,0 +1,46 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: Automate storage of employee records using AWS CloudFormation.
+
+Parameters:
+  companyName:
+    Type: String
+    Description: name of the glorious company
+    Default: pragma
+
+Resources:
+
+  MyKMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: Encryption key for S3
+  
+  ActiveEmployeeBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Join [ '-', ['active-employee-files', !Ref companyName] ]
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !GetAtt MyKMSKey.Arn
+            BucketKeyEnabled: true
+            
+  InactiveEmployeeBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Join [ '-', ['inactive-employee-files', !Ref companyName] ]
+      LifecycleConfiguration:
+        Rules:
+          - Id: GlacierRule
+            Prefix: ""
+            Status: Enabled
+            Transitions:
+              - TransitionInDays: 5
+                StorageClass: GLACIER
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !GetAtt MyKMSKey.Arn
+            BucketKeyEnabled: true
