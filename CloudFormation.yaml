@@ -14,11 +14,53 @@ Resources:
     Type: AWS::KMS::Key
     Properties:
       Description: Encryption key for S3
-  
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CleanFilesAccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - '*'
+                Resource:
+                  - '*'
+
+  CleanFilesFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: clean-files
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Runtime: nodejs14.x
+      Timeout: 60
+      MemorySize: 256
+      Code:
+        ZipFile: |
+          exports.handler = async function(event) {
+            console.log('this is a lambda')
+            return 'hello';
+          };
+      KmsKeyArn: !GetAtt MyKMSKey.Arn
+
   ActiveEmployeeBucket:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Join [ '-', ['active-employee-files', !Ref companyName] ]
+      # NotificationConfiguration:
+      #   LambdaConfigurations:
+      #     - Event: s3:ObjectCreated:*
+      #       Function: !GetAtt CleanFilesFunction.Arn
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
