@@ -14,53 +14,16 @@ Resources:
     Type: AWS::KMS::Key
     Properties:
       Description: Encryption key for S3
-
-  LambdaExecutionRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: lambda.amazonaws.com
-            Action: sts:AssumeRole
-      Policies:
-        - PolicyName: CleanFilesAccessPolicy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - '*'
-                Resource:
-                  - '*'
-
-  CleanFilesFunction:
-    Type: AWS::Lambda::Function
-    Properties:
-      FunctionName: clean-files
-      Handler: index.handler
-      Role: !GetAtt LambdaExecutionRole.Arn
-      Runtime: nodejs14.x
-      Timeout: 60
-      MemorySize: 256
-      Code:
-        ZipFile: |
-          exports.handler = async function(event) {
-            console.log('this is a lambda')
-            return 'hello';
-          };
-      KmsKeyArn: !GetAtt MyKMSKey.Arn
-
+  
   ActiveEmployeeBucket:
     Type: AWS::S3::Bucket
+    DependsOn: CleanFilesLambdaPermission
     Properties:
       BucketName: !Join [ '-', ['active-employee-files', !Ref companyName] ]
-      # NotificationConfiguration:
-      #   LambdaConfigurations:
-      #     - Event: s3:ObjectCreated:*
-      #       Function: !GetAtt CleanFilesFunction.Arn
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:*
+            Function: !GetAtt CleanFilesFunction.Arn
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
@@ -86,3 +49,82 @@ Resources:
               SSEAlgorithm: aws:kms
               KMSMasterKeyID: !GetAtt MyKMSKey.Arn
             BucketKeyEnabled: true
+  
+  CleanFilesLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !Ref CleanFilesFunction
+      Principal: s3.amazonaws.com
+      SourceArn: !Sub 'arn:aws:s3:::active-employee-files-${companyName}'
+      SourceAccount: !Ref AWS::AccountId
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CleanFilesAccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - '*'
+                Resource:
+                  - '*'
+        # - PolicyName: allowLogging
+        #   PolicyDocument:
+        #     Version: '2012-10-17'
+        #     Statement:
+        #     - Effect: Allow
+        #       Action:
+        #       - logs:*
+        #       Resource: arn:aws:logs:*:*:*
+        # - PolicyName: getAndDeleteObjects
+        #   PolicyDocument:
+        #     Version: '2012-10-17'
+        #     Statement:
+        #     - Effect: Allow
+        #       Action:
+        #       - s3:GetObject
+        #       - s3:DeleteObject
+        #       Resource:  !Sub 'arn:aws:s3:::active-employee-files-${companyName}/*'
+
+  CleanFilesFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: clean-files
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Runtime: nodejs18.x
+      Timeout: 60
+      MemorySize: 256
+      Code:
+        ZipFile: > 
+          exports.handler = async (event, context) =>{
+            console.log(JSON.stringify(event));
+            console.log(JSON.stringify(context));
+            return "Hello from Lambda!";
+          };
+      KmsKeyArn: !GetAtt MyKMSKey.Arn
+  
+  CleanFilesFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/clean-files
+      RetentionInDays: 30
+
+  CleanFilesFunctionLogPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt CleanFilesFunction.Arn
+      Principal: logs.amazonaws.com
+      SourceArn: !GetAtt CleanFilesFunctionLogGroup.Arn
