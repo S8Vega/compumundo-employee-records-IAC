@@ -70,32 +70,23 @@ Resources:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
       Policies:
-        - PolicyName: CleanFilesAccessPolicy
+        - PolicyName: allowLogging
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-              - Effect: Allow
-                Action:
-                  - '*'
-                Resource:
-                  - '*'
-        # - PolicyName: allowLogging
-        #   PolicyDocument:
-        #     Version: '2012-10-17'
-        #     Statement:
-        #     - Effect: Allow
-        #       Action:
-        #       - logs:*
-        #       Resource: arn:aws:logs:*:*:*
-        # - PolicyName: getAndDeleteObjects
-        #   PolicyDocument:
-        #     Version: '2012-10-17'
-        #     Statement:
-        #     - Effect: Allow
-        #       Action:
-        #       - s3:GetObject
-        #       - s3:DeleteObject
-        #       Resource:  !Sub 'arn:aws:s3:::active-employee-files-${companyName}/*'
+            - Effect: Allow
+              Action:
+              - logs:*
+              Resource: arn:aws:logs:*:*:*
+        - PolicyName: getAndDeleteObjects
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action:
+              - s3:GetObject
+              - s3:DeleteObject
+              Resource:  !Sub 'arn:aws:s3:::active-employee-files-${companyName}/*'
 
   CleanFilesFunction:
     Type: AWS::Lambda::Function
