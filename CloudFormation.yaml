@@ -10,32 +10,36 @@ Parameters:
 
 Resources:
 
+# Definimos un recurso de AWS Key Management Service (KMS) Key que se utilizará para encriptar los buckets de S3. 
+# Este recurso crea una clave de encriptación KMS que se utilizará posteriormente en los buckets.
   MyKMSKey:
     Type: AWS::KMS::Key
     Properties:
       Description: Encryption key for S3
-  
+
+# Creamos un bucket de S3 llamado `ActiveEmployeeBucket` donde se almacenarán los archivos de los empleados activos.
   ActiveEmployeeBucket:
     Type: AWS::S3::Bucket
     DependsOn: CleanFilesLambdaPermission
     Properties:
-      BucketName: !Join [ '-', ['active-employee-files', !Ref companyName] ]
-      NotificationConfiguration:
+      BucketName: !Join [ '-', ['active-employee-files', !Ref companyName] ] # Utilizamos la función `!Join` para combinar el nombre del bucket con el nombre de la empresa proporcionado por el usuario en el parámetro `companyName`.
+      NotificationConfiguration: #  Configuramos notificaciones para que cuando se cree un objeto en el bucket, se invoque la función `CleanFilesFunction` para procesarlo.
         LambdaConfigurations:
           - Event: s3:ObjectCreated:*
             Function: !GetAtt CleanFilesFunction.Arn
-      BucketEncryption:
+      BucketEncryption: # Habilitamos el cifrado en el lado del servidor con la clave KMS creada anteriormente.
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: aws:kms
               KMSMasterKeyID: !GetAtt MyKMSKey.Arn
             BucketKeyEnabled: true
-            
+
+# Similar al bucket de empleados activos, creamos un bucket de S3 llamado `InactiveEmployeeBucket` para almacenar los archivos de los empleados inactivos.
   InactiveEmployeeBucket:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Join [ '-', ['inactive-employee-files', !Ref companyName] ]
-      LifecycleConfiguration:
+      LifecycleConfiguration: # Configuramos una regla de ciclo de vida para mover automáticamente los archivos del almacenamiento estándar a Glacier después de 5 días.
         Rules:
           - Id: GlacierRule
             Prefix: ""
@@ -43,13 +47,15 @@ Resources:
             Transitions:
               - TransitionInDays: 5
                 StorageClass: GLACIER
-      BucketEncryption:
+      BucketEncryption: # También habilitamos el cifrado en el lado del servidor con la clave KMS creada anteriormente.
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: aws:kms
               KMSMasterKeyID: !GetAtt MyKMSKey.Arn
             BucketKeyEnabled: true
-  
+
+# Creamos un permiso de Lambda para permitir que el evento de S3 invoque la función `CleanFilesFunction` cuando se cree un objeto en el bucket `ActiveEmployeeBucket`.
+# Esto se logra mediante la creación de un recurso `AWS::Lambda::Permission` y especificando la función, el principal y el recurso de origen en el que se producirá el evento.
   CleanFilesLambdaPermission:
     Type: AWS::Lambda::Permission
     Properties:
@@ -59,10 +65,11 @@ Resources:
       SourceArn: !Sub 'arn:aws:s3:::active-employee-files-${companyName}'
       SourceAccount: !Ref AWS::AccountId
 
+# Creamos un rol de IAM llamado `LambdaExecutionRole` utilizado por la función Lambda.
   LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
-      AssumeRolePolicyDocument:
+      AssumeRolePolicyDocument: # Política de confianza que permite a AWS Lambda asumir el rol.
         Version: '2012-10-17'
         Statement:
           - Effect: Allow
@@ -70,7 +77,7 @@ Resources:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
       Policies:
-        - PolicyName: allowLogging
+        - PolicyName: allowLogging # Política que permite a la función Lambda escribir registros en AWS CloudWatch Logs.
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -78,7 +85,7 @@ Resources:
               Action:
               - logs:*
               Resource: arn:aws:logs:*:*:*
-        - PolicyName: getAndDeleteObjects
+        - PolicyName: getAndDeleteObjects # Política que permite a la función Lambda obtener y eliminar objetos del bucket `ActiveEmployeeBucket`.
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -88,6 +95,7 @@ Resources:
               - s3:DeleteObject
               Resource:  !Sub 'arn:aws:s3:::active-employee-files-${companyName}/*'
 
+# Creamos la función Lambda llamada `CleanFilesFunction` que será invocada por el evento de S3.
   CleanFilesFunction:
     Type: AWS::Lambda::Function
     Properties:
@@ -97,21 +105,26 @@ Resources:
       Runtime: nodejs18.x
       Timeout: 60
       MemorySize: 256
-      Code:
+      Code: # Especificamos el código de la función Lambda.
         ZipFile: > 
           exports.handler = async (event, context) =>{
             console.log(JSON.stringify(event));
             console.log(JSON.stringify(context));
             return "Hello from Lambda!";
           };
-      KmsKeyArn: !GetAtt MyKMSKey.Arn
-  
+      KmsKeyArn: !GetAtt MyKMSKey.Arn # Especificamos la clave KMS a utilizar para la función Lambda.
+
+# Creamos un grupo de registros de CloudWatch Logs para la función Lambda.
+# Esto permitirá que la función escriba sus registros en este grupo de registros.
+# Aquí, especificamos el nombre del grupo de registros y la duración de retención de registros.
   CleanFilesFunctionLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: /aws/lambda/clean-files
       RetentionInDays: 30
 
+# Creamos un permiso de Lambda para permitir que el grupo de registros de CloudWatch pueda invocar la función `CleanFilesFunction`.
+# Esto se logra mediante la creación de un recurso `AWS::Lambda::Permission` y especificando la función, el principal y el recurso de origen en el que se producirá el evento.
   CleanFilesFunctionLogPermission:
     Type: AWS::Lambda::Permission
     Properties:
